@@ -210,8 +210,8 @@ def main(savePath, load_path, load_model, lr=1e-3, weight_decay=0, total_epoch=1
         running_overlap_loss = 0.0
         
         my_network.train(True)
-    	epoch_time = time.time()
-    	loss_list = []
+       	epoch_time = time.time()
+        loss_list = []
         for i , data in enumerate(trainLoader, 0):
             begin_time = time.time()
             optimizer.zero_grad()
