@@ -60,9 +60,9 @@ def nonNegativeLighting_fineLevel(shadingLayer, directions, fineLighting, coarse
 			loss = min(0, lighting)**2
 		'''
 		numSamples = fineLighting.size()[0]
-		shadingH = normal.size()[2]  # Height of half sphere
-		shadingW = normal.size()[3]  # width of half sphere
-		normal = normal.expand(numSamples, 3, shadingH, shadingW)
+		shadingH = directions.size()[2]  # Height of half sphere
+		shadingW = directions.size()[3]  # width of half sphere
+		normal = directions.expand(numSamples, 3, shadingH, shadingW)
 
 		ind_zeros = torch.autograd.Variable(torch.zeros(numSamples, 3, shadingH, shadingW).cuda()).float()
 
@@ -72,7 +72,7 @@ def nonNegativeLighting_fineLevel(shadingLayer, directions, fineLighting, coarse
 		loss = torch.autograd.Variable(torch.Tensor([0]).cuda()).float()
 		for i in range(H):
 			for j in range(W):
-					shading = shadingLayer(normal, fineLighting[:, :, i,j] + coarseLighting)
+					shading = shadingLayer(directions, fineLighting[:, :, i,j] + coarseLighting)
 					loss = loss + torch.sum(torch.min(ind_zeros, shading)**2)/(numSamples)
 		return loss/(H*W)
 

@@ -122,7 +122,7 @@ class HourglassNet(nn.Module):
         self.HG1_upSample_albedo = nn.Upsample(scale_factor=2, mode='bilinear')
         self.HG1_upSample_normal = nn.Upsample(scale_factor=2, mode='bilinear')
 
-        # after this layer, split into albeod, shading and lighitng
+        # after this layer, split into albeod, normal and lighitng
         self.HG1_low1 = BasicBlock(self.HG1_nFilter, 2*self.HG1_nFilter)          
         self.HG1_low2_normal = BasicBlock(self.normal_nDim, self.HG1_nFilter)
         self.HG1_low2_albedo = BasicBlock(self.albedo_nDim, self.HG1_nFilter)
@@ -149,7 +149,6 @@ class HourglassNet(nn.Module):
         self.normal_bn_2 = nn.BatchNorm2d(3)
         self.normal_conv_3 = nn.Conv2d(3, 3, kernel_size=3, stride=1, padding=1)
         
-        # for lighting, use 
         # for lighting
         self.light_conv_1 = nn.Conv2d(self.light_nDim, 64, kernel_size=3, stride=2, padding=1)
         self.light_bn_1 = nn.BatchNorm2d(64)

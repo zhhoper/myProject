@@ -89,6 +89,8 @@ class testTransfer(object):
         #shading = shading[sH:sH+self.size, sW:sW+self.size,:]
         #normal = normal[sH:sH+self.size, sW:sW+self.size,:]
         #mask = mask[sH:sH+self.size, sW:sW+self.size]
+
+        # directly resize the image
         image = cv2.resize(image, (self.size, self.size), interpolation=cv2.INTER_CUBIC)
         albedo = cv2.resize(albedo, (self.size, self.size), interpolation=cv2.INTER_CUBIC)
         shading = cv2.resize(shading, (self.size, self.size), interpolation=cv2.INTER_CUBIC)
