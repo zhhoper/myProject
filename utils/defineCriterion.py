@@ -93,3 +93,4 @@ class SiMSELoss(nn.Module):
 		alpha = torch.sum(groundTruth*output)/(torch.sum(output**2) + self.eps)
 		return torch.sum((groundTruth - alpha*output)**2) \
                 /(output.size()[1]*output.size()[2]*output.size()[3]*numData)
+

@@ -1,0 +1,1 @@
+python testSUNCG_coarse_real.py --batchSize 10 --coarseModel 'defineHourglass_64' --coarseModel_load '../result/result_coarse_real_0.0010_0.00_0020/trained_model.t7' --imageSize 64 --savePath '../result/result_coarse_real'

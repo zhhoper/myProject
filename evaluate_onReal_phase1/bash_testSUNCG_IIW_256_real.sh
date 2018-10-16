@@ -1,0 +1,1 @@
+python testSUNCG_IIW_256.py ../result/continue_result_thirdStage_DRN_normal_0.0010_0.00_0020/IIW ../result/result_coarse_0.0010_0.00_0100/ ../result/result_secondStage_DRN_normal_0.0100_0.00_0010 ../result/continue_result_thirdStage_DRN_normal_0.0010_0.00_0020

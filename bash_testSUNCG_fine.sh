@@ -1,0 +1,1 @@
+python testSUNCG_fine.py result/continue_result_secondStage_0.0100_0.00_0003/visualize_images result/result_coarse_0.0010_0.00_0100/ result/continue_result_secondStage_0.0100_0.00_0003/

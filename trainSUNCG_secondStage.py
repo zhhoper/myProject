@@ -126,18 +126,20 @@ def networkForward(data, Testing=False):
     coarse_shading = F.upsample(coarse_shading, size=[IMAGE_SIZE, IMAGE_SIZE], mode='bilinear')
 
     # NOTE: we have a bug in coarse network for lighting, correct it
-    coarse_lighting = coarse_lighting[:,0:27]
+    coarse_lighting = Variable(coarse_lighting[:,0:27].data).float()
     
     # get the residual as groundtruth
-    albedo = albedo - coarse_albedo
-    shading = shading - coarse_shading
-    normal = normal - coarse_normal
+    albedo = Variable((albedo - coarse_albedo).data).float()
+    shading = Variable((shading - coarse_shading).data).float()
+    normal = Variable((normal - coarse_normal).data).float()
     
     # concatenate images, albedo, normal, shading as input
     inputs = torch.cat((inputs, coarse_albedo, coarse_normal, coarse_shading), dim=1)
+    inputs_fine = Variable(inputs.data, volatile=Testing).float()
+    coarse_normal_fine = Variable(coarse_normal.data, volatile=Testing).float()
     # predict residual
     output_albedo, output_normal, output_shading, output_lighting, overlap_loss = \
-        my_convNet(inputs, coarse_normal, my_network)
+        my_convNet(inputs_fine, coarse_normal_fine, my_network)
 
     # compute loss
     loss_albedo, loss_shading, loss_albedo_grad, loss_shading_grad, \
@@ -183,6 +185,7 @@ def main(savePath, load_path, load_model, lr=1e-3, weight_decay=0, total_epoch=1
     global my_network_coarse 
     my_network_coarse = torch.load(os.path.join(load_path, 'trained_model.t7'))
     my_network_coarse.cuda()
+    my_network_coarse.train(False)
 
     my_network.load_state_dict(torch.load(load_model))
     
@@ -216,12 +219,15 @@ def main(savePath, load_path, load_model, lr=1e-3, weight_decay=0, total_epoch=1
             begin_time = time.time()
             optimizer.zero_grad()
             loss_miniBatch = networkForward(data, Testing=False)
+            print 'time used for one iteration is %s ' % (time.time() - begin_time)
+            begin_time= time.time()
             loss = loss_miniBatch['albedo'] + loss_miniBatch['albedo_grad'] + \
                     loss_miniBatch['shading'] + loss_miniBatch['shading_grad'] + \
                     loss_miniBatch['normal'] + loss_miniBatch['normal_grad'] + \
                     loss_miniBatch['light'] + loss_miniBatch['overlap']*0.25
 
             loss.backward()
+            print 'time used for one iteration is %s ' % (time.time() - begin_time)
 
             optimizer.step()
 

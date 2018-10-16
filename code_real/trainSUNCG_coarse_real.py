@@ -58,6 +58,14 @@ criterion_SAW_2 = loss_SAW_2()
 evaluateNetwork = evaluateNetwork(criterion_mask, criterion_IIW, 
         criterion_SAW_1, criterion_SAW_2, gradientLayer)
 
+## for lighting
+# get the normal/direction of positive and negative spheres
+# used to constrain lighting to be positive
+sphereDirection_pos, sphereDirection_neg, sphereMask = getSHNormal(64)
+sphereDirection_pos = Variable(torch.from_numpy(sphereDirection_pos).cuda()).float()
+sphereDirection_neg = Variable(torch.from_numpy(sphereDirection_neg).cuda()).float()
+sphereMask = Variable(torch.from_numpy(sphereMask).cuda()).float()
+
 # define network forward for coarse model
 network = networkForward_basic(coarseModel, shadingLayer_coarse, args.imageSize, 1)
 network.model.cuda()
@@ -77,32 +85,30 @@ valLoader_IIW = torch.utils.data.DataLoader(valLoaderHelper_IIW,
 # the image
 trainLoaderHelper_SAW = constructDataLoader('train', 'shading', args.imageSize)
 trainLoader_SAW = torch.utils.data.DataLoader(trainLoaderHelper_SAW,
-	batch_size=args.batchSize, shuffle=True, num_workers=1)
-train_SAW_iter = iter(trainLoader_SAW)
+	batch_size=args.batchSize, shuffle=True, num_workers=5)
 
 valLoaderHelper_SAW = constructDataLoader('val', 'shading', args.imageSize)
 valLoader_SAW = torch.utils.data.DataLoader(valLoaderHelper_SAW,
-	batch_size=args.batchSize, shuffle=False, num_workers=1)
-val_SAW_iter = iter(valLoader_SAW)
+	batch_size=args.batchSize, shuffle=False, num_workers=5)
 
 def help_computeNetwork(data_compare, data_SAW, writer, epoch, i, indType='train'):
     # return loss
-    print i
-    begin_time = time.time()
+    # print i
+    #begin_time = time.time()
     
     return_loss = OrderedDict()
     image_SUNCG_compare, image_IIW_compare, _, label_SUNCG_compare, \
             label_IIW_compare, _ = data_compare 
     # train on compare 
-    images_SUNCG_compare = Variable(image_SUNCG_compare.cuda(), requires_grad=True).float()
+    images_SUNCG_compare = Variable(image_SUNCG_compare.cuda()).float()
     output_SUNCG_compare = network.forward(images_SUNCG_compare) 
     label_SUNCG_compare = labelToGPU.toGPU(label_SUNCG_compare) 
-    loss_SUNCG_compare = evaluateNetwork.IIW_loss(output_SUNCG_compare, label_SUNCG_compare, 'SUNCG')
+    loss_SUNCG_compare = evaluateNetwork.IIW_loss(output_SUNCG_compare, label_SUNCG_compare, 'SUNCG', scale_factor=4)
     
     images_IIW_compare = Variable(image_IIW_compare.cuda()).float()
     output_IIW_compare = network.forward(images_IIW_compare) 
     label_IIW_compare = labelToGPU.toGPU(label_IIW_compare) 
-    loss_IIW_compare = evaluateNetwork.IIW_loss(output_IIW_compare, label_IIW_compare, 'IIW')
+    loss_IIW_compare = evaluateNetwork.IIW_loss(output_IIW_compare, label_IIW_compare, 'IIW', scale_factor=4)
 
     loss = loss_SUNCG_compare['WHDR'] + loss_IIW_compare['WHDR']
 
@@ -112,66 +118,87 @@ def help_computeNetwork(data_compare, data_SAW, writer, epoch, i, indType='train
     # backward for IIW compare loss
     if indType=='train':
         loss.backward()
-    print 'time used for one WHDR %s' % (time.time() - begin_time)
-    begin_time = time.time()
+    #print 'time used for one WHDR %s' % (time.time() - begin_time)
+    #begin_time = time.time()
     
     image_SUNCG_SAW, image_IIW_SAW, image_NYU_SAW, label_SUNCG_SAW, \
             label_IIW_SAW, label_NYU_SAW = data_SAW
+    # suncg SAW 
+    #image_SUNCG_SAW, image_IIW_SAW, image_NYU_SAW, label_SUNCG_SAW, \
+    #        label_IIW_SAW, label_NYU_SAW = data_compare
     # suncg SAW 
     images_SUNCG_SAW = Variable(image_SUNCG_SAW.cuda()).float()
     output_SUNCG_SAW = network.forward(images_SUNCG_SAW) 
     label_SUNCG_SAW = labelToGPU.toGPU(label_SUNCG_SAW) 
     loss_SUNCG_SAW = evaluateNetwork.SUNCG_data(output_SUNCG_SAW, label_SUNCG_SAW)
+
+    loss_light_pos = nonNegativeLighting_coarseLevel(samplingLightLayer, sphereDirection_pos, output_SUNCG_SAW['lighting'])
+    loss_light_neg = nonNegativeLighting_coarseLevel(samplingLightLayer, sphereDirection_neg, output_SUNCG_SAW['lighting'])
+    loss_light = loss_light_neg + loss_light_pos
+
     return_loss['SUNCG_albedo'] = loss_SUNCG_SAW['albedo'].data[0]
-    return_loss['SUNCG_albedo_grad'] = loss_SUNCG_SAW['albedo_grad'].data[0]
+    #return_loss['SUNCG_albedo_grad'] = loss_SUNCG_SAW['albedo_grad'].data[0]
     return_loss['SUNCG_shading'] = loss_SUNCG_SAW['shading'].data[0]
-    return_loss['SUNCG_shading_grad'] = loss_SUNCG_SAW['shading_grad'].data[0]
+    #return_loss['SUNCG_shading_grad'] = loss_SUNCG_SAW['shading_grad'].data[0]
     return_loss['SUNCG_normal'] = loss_SUNCG_SAW['normal'].data[0]
-    return_loss['SUNCG_normal_grad'] = loss_SUNCG_SAW['normal_grad'].data[0]
+    #return_loss['SUNCG_normal_grad'] = loss_SUNCG_SAW['normal_grad'].data[0]
+    return_loss['SUNCG_lighting'] = loss_light.data[0]
     
     # IIW SAW 
-    images_IIW_SAW = Variable(image_IIW_SAW.cuda()).float()
-    output_IIW_SAW = network.forward(images_IIW_SAW) 
-    label_IIW_SAW = labelToGPU.toGPU(label_IIW_SAW) 
-    loss_IIW_SAW = evaluateNetwork.IIW_data(output_IIW_SAW, images_IIW_SAW, label_IIW_SAW)
-    return_loss['IIW_SAW_1'] = loss_IIW_SAW['saw_loss_1'].data[0]
-    return_loss['IIW_SAW_2'] = loss_IIW_SAW['saw_loss_2'].data[0]
-    return_loss['IIW_reconstruct'] = loss_IIW_SAW['reconstruct'].data[0]
+    #images_IIW_SAW = Variable(image_IIW_SAW.cuda()).float()
+    #output_IIW_SAW = network.forward(images_IIW_SAW) 
+    #label_IIW_SAW = labelToGPU.toGPU(label_IIW_SAW) 
+    #loss_IIW_SAW = evaluateNetwork.IIW_data(output_IIW_SAW, images_IIW_SAW, label_IIW_SAW)
+    #return_loss['IIW_SAW_1'] = loss_IIW_SAW['saw_loss_1'].data[0]
+    #return_loss['IIW_SAW_2'] = loss_IIW_SAW['saw_loss_2'].data[0]
+    #return_loss['IIW_reconstruct'] = loss_IIW_SAW['reconstruct'].data[0]
     
     # NYU SAW 
-    images_NYU_SAW = Variable(image_NYU_SAW.cuda()).float()
-    output_NYU_SAW = network.forward(images_NYU_SAW) 
-    label_NYU_SAW = labelToGPU.toGPU(label_NYU_SAW) 
-    loss_NYU_SAW = evaluateNetwork.NYU_data(output_NYU_SAW, images_NYU_SAW, label_NYU_SAW)
-    return_loss['NYU_SAW_1'] = loss_NYU_SAW['saw_loss_1'].data[0]
-    return_loss['NYU_SAW_2'] = loss_NYU_SAW['saw_loss_2'].data[0]
-    return_loss['NYU_reconstruct'] = loss_NYU_SAW['reconstruct'].data[0]
-    return_loss['NYU_normal'] = loss_NYU_SAW['normal'].data[0]
-    return_loss['NYU_normal_grad'] = loss_NYU_SAW['normal_grad'].data[0]
+    #images_NYU_SAW = Variable(image_NYU_SAW.cuda()).float()
+    #output_NYU_SAW = network.forward(images_NYU_SAW) 
+    #label_NYU_SAW = labelToGPU.toGPU(label_NYU_SAW) 
+    #loss_NYU_SAW = evaluateNetwork.NYU_data(output_NYU_SAW, images_NYU_SAW, label_NYU_SAW)
+    #return_loss['NYU_SAW_1'] = loss_NYU_SAW['saw_loss_1'].data[0]
+    #return_loss['NYU_SAW_2'] = loss_NYU_SAW['saw_loss_2'].data[0]
+    #return_loss['NYU_reconstruct'] = loss_NYU_SAW['reconstruct'].data[0]
+    #return_loss['NYU_normal'] = loss_NYU_SAW['normal'].data[0]
+    #return_loss['NYU_normal_grad'] = loss_NYU_SAW['normal_grad'].data[0]
     
+    #loss = loss_SUNCG_SAW['albedo'] + loss_SUNCG_SAW['normal'] + loss_SUNCG_SAW['shading'] \
+    #        + loss_SUNCG_SAW['albedo_grad'] + loss_SUNCG_SAW['normal_grad'] + loss_SUNCG_SAW['shading_grad']\
+    #        + loss_IIW_SAW['saw_loss_1'] + loss_IIW_SAW['saw_loss_2'] + loss_IIW_SAW['reconstruct'] \
+    #        + loss_NYU_SAW['saw_loss_1'] + loss_NYU_SAW['saw_loss_2'] + loss_NYU_SAW['reconstruct'] \
+    #        + loss_NYU_SAW['normal'] + loss_NYU_SAW['normal_grad']
     loss = loss_SUNCG_SAW['albedo'] + loss_SUNCG_SAW['normal'] + loss_SUNCG_SAW['shading'] \
-            + loss_SUNCG_SAW['albedo_grad'] + loss_SUNCG_SAW['normal_grad'] + loss_SUNCG_SAW['shading_grad']\
-            + loss_IIW_SAW['saw_loss_1'] + loss_IIW_SAW['saw_loss_2'] + loss_IIW_SAW['reconstruct'] \
-            + loss_NYU_SAW['saw_loss_1'] + loss_NYU_SAW['saw_loss_2'] + loss_NYU_SAW['reconstruct'] \
-            + loss_NYU_SAW['normal'] + loss_NYU_SAW['normal_grad']
+            + loss_SUNCG_SAW['albedo_grad'] + loss_SUNCG_SAW['normal_grad'] + loss_SUNCG_SAW['shading_grad'] + loss_light
+            #+ loss_IIW_SAW['saw_loss_1'] + loss_IIW_SAW['saw_loss_2'] + loss_IIW_SAW['reconstruct'] \
+            #+ loss_NYU_SAW['saw_loss_1'] + loss_NYU_SAW['saw_loss_2'] + loss_NYU_SAW['reconstruct'] \
+            #+ loss_NYU_SAW['normal'] + loss_NYU_SAW['normal_grad']
 
 
     if indType=='train':
         loss.backward()
         optimizer.step()
-    print 'time used for others %s' % (time.time() - begin_time)
+    #print 'time used for others %s' % (time.time() - begin_time)
 
     # record images
     if i % args.print_freq == args.print_freq - 1:
-        writer.add_image(os.path.join(indType, 'SUNCG_albedo'), output_SUNCG_SAW['albedo'])
-        writer.add_image(os.path.join(indType, 'SUNCG_shading'), output_SUNCG_SAW['shading'])
-        writer.add_image(os.path.join(indType, 'SUNCG_normal'), output_SUNCG_SAW['normal'])
-        writer.add_image(os.path.join(indType, 'IIW_albedo'), output_IIW_SAW['albedo'])
-        writer.add_image(os.path.join(indType, 'IIW_shading'), output_IIW_SAW['shading'])
-        writer.add_image(os.path.join(indType, 'IIW_normal'), output_IIW_SAW['normal'])
-        writer.add_image(os.path.join(indType, 'NYU_albedo'), output_NYU_SAW['albedo'])
-        writer.add_image(os.path.join(indType, 'NYU_shading'), output_NYU_SAW['shading'])
-        writer.add_image(os.path.join(indType, 'NYU_normal'), output_NYU_SAW['normal'])
+        writer.add_image(os.path.join(indType, 'SUNCG_albedo'), output_SUNCG_compare['albedo'])
+        writer.add_image(os.path.join(indType, 'SUNCG_shading'), output_SUNCG_compare['shading'])
+        writer.add_image(os.path.join(indType, 'SUNCG_normal'), output_SUNCG_compare['normal'])
+        writer.add_image(os.path.join(indType, 'IIW_albedo'), output_IIW_compare['albedo'])
+        writer.add_image(os.path.join(indType, 'IIW_shading'), output_IIW_compare['shading'])
+        writer.add_image(os.path.join(indType, 'IIW_normal'), output_IIW_compare['normal'])
+        #writer.add_image(os.path.join(indType, 'IIW_albedo'), output_IIW_SAW['albedo'])
+        #writer.add_image(os.path.join(indType, 'IIW_shading'), output_IIW_SAW['shading'])
+        #writer.add_image(os.path.join(indType, 'IIW_normal'), output_IIW_SAW['normal'])
+        #writer.add_image(os.path.join(indType, 'NYU_albedo'), output_NYU_SAW['albedo'])
+        #writer.add_image(os.path.join(indType, 'NYU_shading'), output_NYU_SAW['shading'])
+        #writer.add_image(os.path.join(indType, 'NYU_normal'), output_NYU_SAW['normal'])
+
+        writer.add_image(os.path.join(indType, 'SUNCG_normal_true'), label_SUNCG_SAW['normal'])
+        writer.add_image(os.path.join(indType, 'SUNCG_shading_true'), label_SUNCG_SAW['shading'])
+        writer.add_image(os.path.join(indType, 'SUNCG_albedo_true'), label_SUNCG_SAW['albedo'])
 
     return return_loss
 
@@ -180,7 +207,7 @@ def record_loss(writer, loss_list, lossName, numIte, indType='train'):
         write loss into tensorboard
     '''
     for (i, item) in enumerate(lossName):
-        writer.add_scalar(os.path.join(indType, item), loss_list[0], numIte)
+        writer.add_scalar(os.path.join(indType, item), loss_list[i], numIte)
 
 
 labelToGPU = labelToGPU()
@@ -203,25 +230,33 @@ def main():
     fid_sep = open(os.path.join(savePath, 'training_sep.log'), 'w')
     fid_test = open(os.path.join(savePath, 'testing.log'), 'w')
     fid_test_sep = open(os.path.join(savePath, 'testing_sep.log'), 'w')
-    lossName = ['SUNCG_WDHR', 'IIW_WDHR', 'SUNCG_albedo', 'SUNCG_albedo_grad',
-            'SUNCG_shading', 'SUNCG_shading_normal', 'SUNCG_normal', 'SUNCG_normal_grad',
-            'IIW_SAW_1', 'IIW_SAW_2', 'IIW_reconstruct', 'NYU_SAW_1', 'NYU_SAW_2', 'NYU_reconstruct',
-            'NYU_normal', 'NYU_normal_grad']
+    #lossName = ['SUNCG_WDHR', 'IIW_WDHR', 'SUNCG_albedo', 'SUNCG_albedo_grad',
+    #        'SUNCG_shading', 'SUNCG_shading_normal', 'SUNCG_normal', 'SUNCG_normal_grad',
+    #        'IIW_SAW_1', 'IIW_SAW_2', 'IIW_reconstruct', 'NYU_SAW_1', 'NYU_SAW_2', 'NYU_reconstruct',
+    #        'NYU_normal', 'NYU_normal_grad']
+    #lossName = ['SUNCG_WDHR_loss', 'IIW_WDHR_loss', 'SUNCG_albedo_loss', 'SUNCG_shading_loss', 'SUNCG_normal_loss']
+    lossName = ['SUNCG_WHDR', 'IIW_WHDR', 'SUNCG_albedo_loss', 'SUNCG_shading_loss', 'SUNCG_normal_loss', 'SUNCG_lighting']
     print>>fid_sep, ','.join(lossName) 
     print>>fid_test_sep, ','.join(lossName)
     numIte_training = 0
     numIte_testing = 0
+
     for epoch in range(args.epochs):
+        train_SAW_iter = iter(trainLoader_SAW)
+        val_SAW_iter = iter(valLoader_SAW)
+        begin_time_inner = time.time()
         network.model.train(True)
         loss_list = []
         tmp_loss_list = []
         for (i, data_compare) in enumerate(trainLoader_IIW, 0): 
+            optimizer.zero_grad()
             data_SAW = next(train_SAW_iter, None)
             return_loss = help_computeNetwork(data_compare, data_SAW, writer, epoch, i, indType='train')
             numLoss = len(return_loss.values())
             loss_list.append(return_loss.values())
             tmp_loss_list.append(return_loss.values())
             if i % args.print_freq == args.print_freq-1:
+                print numLoss
                 numIte_training = numIte_training+1
                 tmp_loss_list = np.array(tmp_loss_list)
                 tmp_loss_list = np.mean(tmp_loss_list, axis=0)
@@ -229,8 +264,10 @@ def main():
                 print '%.4f '*numLoss % tuple(tmp_loss_list)
                 print>>fid, '%d %5d ' % (epoch+1, i+1),
                 print>>fid, '%.4f '*numLoss % tuple(tmp_loss_list)
-                record_loss(writer, tmp_loss_list, lossName, numIte_training)
+                record_loss(writer, tmp_loss_list, lossName, numIte_training, indType='train')
                 tmp_loss_list = []
+                print 'time for 20 iterations is %s' % (time.time() - begin_time_inner)
+                begin_time_inner = time.time()
         loss_list = np.mean(np.array(loss_list), axis=0)
         print >> fid_sep, '%0.6f '* numLoss % tuple(loss_list)
         print '%0.6f '* numLoss % tuple(loss_list)
@@ -242,7 +279,6 @@ def main():
             data_SAW = next(val_SAW_iter, None)
             return_loss = help_computeNetwork(data_compare, data_SAW, writer, epoch, i, indType='test')
             numLoss = len(return_loss.values())
-            loss_list.append(return_loss.values())
             test_loss_list.append(return_loss.values())
         test_loss_list = np.array(test_loss_list)
         test_loss_list = np.mean(test_loss_list, axis=0)
@@ -250,13 +286,15 @@ def main():
         print '%.4f '*numLoss % tuple(test_loss_list)
         print>>fid, '%d %5d ' % (epoch+1, i+1),
         print>>fid, '%.4f '*numLoss % tuple(test_loss_list)
-        record_loss(writer, test_loss_list, lossName, numIte_training)
+        record_loss(writer, test_loss_list, lossName, numIte_training, indType='test')
         print >> fid_test_sep, '%0.6f '* numLoss % tuple(test_loss_list)
         print '%0.6f '* numLoss % tuple(test_loss_list)
         tmp_saveName = os.path.join(saveIntermedia, 'trained_model_{:02d}.t7'.format(epoch))
         network.model.cpu()
         torch.save(network.model.state_dict(), tmp_saveName)
         network.model.cuda()
+    network.model.cpu()
+    torch.save(network.model, os.path.join(savePath, 'trained_model.t7'))
     fid.close()
     fid_test.close()
     fid_sep.close()

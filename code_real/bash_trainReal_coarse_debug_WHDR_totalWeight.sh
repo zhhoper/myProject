@@ -1,0 +1,1 @@
+python trainSUNCG_coarse_real_debug_WHDR.py --batchSize 10 --coarseModel 'defineHourglass_64' --coarseModel_load '../result/result_coarse_0.0010_0.00_0100/trained_model.t7' --imageSize 64 --savePath '../result/result_coarse_real_debug_WHDR_totalWeight'

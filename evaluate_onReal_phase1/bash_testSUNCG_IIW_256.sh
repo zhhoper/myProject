@@ -1,0 +1,1 @@
+python testSUNCG_IIW_256_real.py ../result/result_detail_real_debug_WHDR_withColor_batch_8_0.0010_0.00_0020/IIW ../result/result_coarse_real_debug_WHDR_withColor_0.0010_0.00_0020 ../result/result_fine_real_debug_WHDR_withColor_0.0010_0.00_0020 ../result/result_detail_real_debug_WHDR_withColor_batch_8_0.0010_0.00_0020

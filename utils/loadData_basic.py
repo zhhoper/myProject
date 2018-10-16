@@ -62,13 +62,11 @@ class SUNCG(Dataset):
         
         maskName = os.path.join(self.maskFolder, fileName)
         mask = io.imread(maskName)
-        #print 'loading mask'
-        #print np.sum(mask)
         
         if self.transform:
             image, albedo, shading, normal, mask = \
                     self.transform([image, albedo,  shading, normal, mask, normalMask])
-        return image, albedo, shading, normal, mask
+        return image, albedo, shading, normal, mask, fileName
 
 class testTransfer(object):
     def __init__(self, output_size=64):
